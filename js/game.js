@@ -23,7 +23,7 @@ const TAU = Math.PI * 2;
 // ---------------------------------------------------------------- renderer
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.12;
+renderer.toneMappingExposure = 1.22;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
@@ -538,6 +538,7 @@ function buildLamp() {
   M.shade.map = sh;
   mesh(new THREE.CylinderGeometry(.16, .28, .3, 40, 1, true), M.shade, g, 0, 1.2, 0);
   lamp.light = new THREE.PointLight(0xffb46a, 7, 9, 1.6); lamp.light.position.set(0, 1.22, 0); g.add(lamp.light);
+  lamp.light.shadow.bias = -.004; lamp.light.shadow.normalBias = .04; lamp.light.shadow.camera.near = .05; lamp.light.shadow.camera.far = 10;
   circles.push({ x: lamp.pos.x, z: lamp.pos.z, r: .34 });
   blob(scene, 'round', lamp.pos.x, .005, lamp.pos.z, 1.0, 1.0, .75); blob(g, 'round', 0, .649, 0, .34, .34, .6);
 }
@@ -577,21 +578,34 @@ function buildWindowWall() {
   // 外：空、街並み（3層）、ボケた灯、雪
   const sky = canvasTex(8, 256, (c, w, h) => { const gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#01020a'); gr.addColorStop(.42, '#050818'); gr.addColorStop(.52, '#151530'); gr.addColorStop(.58, '#2a1c2c'); gr.addColorStop(.7, '#07060c'); gr.addColorStop(1, '#020203'); c.fillStyle = gr; c.fillRect(0, 0, w, h); });
   scene.add(new THREE.Mesh(new THREE.SphereGeometry(500, 24, 16), Basic({ map: sky, side: THREE.BackSide, depthWrite: false })));
-  const city = (dist, dens, bright, tint, hmin, hmax, top, rep) => {
-    const t = canvasTex(2048, 768, (c, w, h) => {
-      let x = 0; while (x < w) {
-        const bw = rr(26, 100), gap = rnd() < dens ? 0 : rr(20, 160), bh = h * rr(hmin, hmax), top = h - bh;
-        c.fillStyle = `rgb(${tint[0] * .02 * 255},${tint[1] * .022 * 255},${tint[2] * .035 * 255})`; c.fillRect(x, top, bw, bh);
-        if (rnd() < .3) { c.fillRect(x + bw * .3, top - rr(10, 46), bw * .4, 50); c.fillStyle = '#ff3020'; c.fillRect(x + bw * .5 - 1, top - 50, 3, 3); }
-        const cw = rr(5, 8), ch = rr(7, 11), lit = rr(.12, .5), warm = rnd();
-        for (let yy = top + 6; yy < h - 4; yy += ch) for (let xx = x + 4; xx < x + bw - 4; xx += cw) { if (rnd() > lit) continue; const k = rnd(), col = k < warm ? [255, rr(170, 225), rr(90, 150)] : k < .93 ? [rr(170, 215), rr(205, 235), 255] : [rr(40, 255), rr(60, 255), rr(120, 255)]; const a = rr(.35, 1) * bright; c.fillStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${a})`; c.fillRect(xx, yy, cw - 2.2, ch - 3.4); }
-        x += bw + gap;
-      }
+  const city = (dist, dens, bright, tint, hmin, hmax, top, rep, bokehR) => {
+    const CW = 2048, CH = 768, B = []; let x = 0;
+    while (x < CW) {
+      const bw = rr(26, 100), gap = rnd() < dens ? 0 : rr(20, 160), bh = CH * rr(hmin, hmax), tp = CH - bh, o = { x, tp, bw, bh, mast: rnd() < .3 ? rr(10, 46) : 0, win: [] };
+      const cw = rr(5, 8), ch = rr(7, 11), lit = rr(.12, .5), warm = rnd(); o.cw = cw; o.ch = ch;
+      for (let yy = tp + 6; yy < CH - 4; yy += ch) for (let xx = x + 4; xx < x + bw - 4; xx += cw) { if (rnd() > lit) continue; const k = rnd(), col = k < warm ? [255, rr(170, 225), rr(90, 150)] : k < .93 ? [rr(170, 215), rr(205, 235), 255] : [rr(40, 255), rr(60, 255), rr(120, 255)]; o.win.push([xx, yy, col[0] | 0, col[1] | 0, col[2] | 0, rr(.35, 1) * bright]); }
+      B.push(o); x += bw + gap;
+    }
+    const body = `rgb(${tint[0] * .02 * 255},${tint[1] * .022 * 255},${tint[2] * .035 * 255})`;
+    const draw = soft => canvasTex(CW, CH, c => {
+      if (soft) c.filter = 'blur(' + (bokehR * .8).toFixed(1) + 'px)';
+      for (const o of B) { c.fillStyle = body; c.fillRect(o.x, o.tp, o.bw, o.bh); if (o.mast) c.fillRect(o.x + o.bw * .3, o.tp - o.mast, o.bw * .4, 50); }
+      c.filter = 'none';
+      if (!soft) { for (const o of B) { if (o.mast) { c.fillStyle = '#ff3020'; c.fillRect(o.x + o.bw * .5 - 1, o.tp - 50, 3, 3); } for (const [xx, yy, r, g, b, a] of o.win) { c.fillStyle = `rgba(${r},${g},${b},${a})`; c.fillRect(xx, yy, o.cw - 2.2, o.ch - 3.4); } } return; }
+      // ボケ：灯りを円盤として加算で重ねる（縁をわずかに明るく）
+      c.globalCompositeOperation = 'lighter';
+      const disc = (px, py, r, g, b, a, R) => { for (const ox of (px < R ? [0, CW] : px > CW - R ? [0, -CW] : [0])) { c.fillStyle = `rgba(${r},${g},${b},${a * .34})`; c.beginPath(); c.arc(px + ox, py, R, 0, TAU); c.fill(); c.strokeStyle = `rgba(${r},${g},${b},${a * .22})`; c.lineWidth = 1; c.beginPath(); c.arc(px + ox, py, R - .5, 0, TAU); c.stroke(); } };
+      for (const o of B) { if (o.mast) disc(o.x + o.bw * .5, o.tp - 48, 255, 48, 32, 1.6, bokehR * .8); for (const [xx, yy, r, g, b, a] of o.win) disc(xx + o.cw * .4, yy + o.ch * .35, r, g, b, a, bokehR * (.8 + .4 * ((xx * 7 + yy * 13) % 10) / 10)); }
     });
-    t.wrapS = THREE.RepeatWrapping; t.repeat.x = rep; const W = dist * 7, Hh = W / rep * 768 / 2048, m = new THREE.Mesh(new THREE.PlaneGeometry(W, Hh), Basic({ map: t, transparent: true, alphaTest: .4, color: new THREE.Color(1.7, 1.7, 1.7) }));
-    m.rotation.y = -Math.PI / 2; m.position.set(X1 + dist, top - ((hmin + hmax) / 2 - .5) * Hh, ZC + rr(-20, 20)); scene.add(m);
+    const W = dist * 7, Hh = W / rep * CH / CW, L = {};
+    for (const key of ['sharp', 'soft']) {
+      const t = draw(key === 'soft'); t.wrapS = THREE.RepeatWrapping; t.repeat.x = rep;
+      const mat = Basic({ map: t, transparent: true, depthWrite: false, color: new THREE.Color(1.7, 1.7, 1.7) }), m = new THREE.Mesh(new THREE.PlaneGeometry(W, Hh), mat);
+      m.rotation.y = -Math.PI / 2; m.position.set(X1 + dist, top - ((hmin + hmax) / 2 - .5) * Hh, 0); m.renderOrder = -dist; scene.add(m); L[key] = mat; L[key + 'Mesh'] = m;
+    }
+    const zz = ZC + rr(-20, 20); L.sharpMesh.position.z = L.softMesh.position.z = zz; cityLayers.push(L);
   };
-  city(260, .95, .55, [1, 1.2, 2.2], .2, .62, -14, 5); city(140, .75, .8, [1, 1.1, 1.8], .22, .8, -8, 4); city(70, .4, 1, [1, 1, 1.4], .3, .98, -6, 3);
+  city(260, .95, .55, [1, 1.2, 2.2], .2, .62, -14, 5, 5); city(140, .75, .8, [1, 1.1, 1.8], .22, .8, -8, 4, 6.5); city(70, .4, 1, [1, 1, 1.4], .3, .98, -6, 3, 8);
   // ボケ
   { const n = 300, p = new Float32Array(n * 3), cc = new Float32Array(n * 3), sd = new Float32Array(n);
     for (let i = 0; i < n; i++) { p.set([X1 + rr(22, 150), rr(-55, 16), ZC + rr(-130, 130)], i * 3); const k = rnd(), col = k < .5 ? [1, .72, .36] : k < .78 ? [1, .9, .7] : k < .92 ? [.55, .75, 1] : [1, .3, .25]; cc.set(col, i * 3); sd[i] = rnd(); }
@@ -672,7 +686,7 @@ function buildDust() {
 // ---------------------------------------------------------------- lights
 let hemi, winLight, roomFill;
 function buildLights() {
-  hemi = new THREE.HemisphereLight(0x5a4038, 0x2a120a, .5); scene.add(hemi);
+  hemi = new THREE.HemisphereLight(0x5a4038, 0x2a120a, .85); scene.add(hemi);
   roomFill = new THREE.PointLight(0xffb888, 2.2, 12, 1.1); roomFill.position.set(0, 2.7, -.6); scene.add(roomFill);
   winLight = new THREE.SpotLight(0x5f7fd0, 10, 12, .7, 1, 1.4); winLight.position.set(X1 + 3.0, 3.6, ZC); winLight.target.position.set(1.2, 0, ZC); scene.add(winLight, winLight.target);
 }
@@ -691,24 +705,57 @@ function captureEnv() {
   if (envRT) envRT.dispose(); envRT = rt;
 }
 
+// 映りこみの箱補正：部屋の中央で撮った環境マップを、部屋の箱（壁・床・天井）に当たった位置で引き直す
+const BOX_GLSL = `vec3 boxProject( vec3 dir, vec3 wp ) {
+  vec3 bmin = vec3( ${X0.toFixed(2)}, 0.0, ${Z0.toFixed(2)} ), bmax = vec3( ${X1.toFixed(2)}, ${WH.toFixed(2)}, ${Z1.toFixed(2)} ), probe = vec3( ${cubeCam.position.x.toFixed(2)}, ${cubeCam.position.y.toFixed(2)}, ${cubeCam.position.z.toFixed(2)} );
+  if ( any( lessThan( wp, bmin - 0.3 ) ) || any( greaterThan( wp, bmax + 0.3 ) ) ) return dir;
+  vec3 d = dir + ( 1.0 - step( 1e-5, abs( dir ) ) ) * 1e-5;
+  vec3 rb = max( ( bmax - wp ) / d, ( bmin - wp ) / d );
+  float t = max( min( min( rb.x, rb.y ), rb.z ), 0.0 );
+  return normalize( wp + dir * t - probe );
+}
+`;
+const BOX_CHUNK = THREE.ShaderChunk.envmap_physical_pars_fragment.replace('reflectVec = inverseTransformDirection( reflectVec, viewMatrix );', 'reflectVec = inverseTransformDirection( reflectVec, viewMatrix ); reflectVec = boxProject( reflectVec, vBoxWP );');
+const BOX_OK = BOX_CHUNK !== THREE.ShaderChunk.envmap_physical_pars_fragment;
+function boxify(mat) {
+  if (!BOX_OK || mat.userData.box) return; mat.userData.box = true;
+  mat.onBeforeCompile = sh => {
+    sh.vertexShader = 'varying vec3 vBoxWP;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n\tvBoxWP = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;');
+    sh.fragmentShader = 'varying vec3 vBoxWP;\n' + BOX_GLSL + sh.fragmentShader.replace('#include <envmap_physical_pars_fragment>', BOX_CHUNK);
+  };
+  mat.customProgramCacheKey = () => 'box';
+}
+
 // ---------------------------------------------------------------- post
 let composer, bloom, finalPass, gtao = null, noAO = [], quality = COARSE ? 'low' : 'mid';
 const FinalShader = {
-  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, res: { value: new THREE.Vector2(1, 1) } },
+  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, res: { value: new THREE.Vector2(1, 1) }, haze: { value: new THREE.Vector4(.5, .5, .1, .1) }, hazeAmp: { value: 0 }, grade: { value: 1 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float time; uniform vec2 res; varying vec2 vUv;
-    void main(){ vec2 c=vUv-.5; float r2=dot(c,c); vec2 off=c*r2*.010;
-      vec3 col=vec3(texture2D(tDiffuse,vUv+off).r,texture2D(tDiffuse,vUv).g,texture2D(tDiffuse,vUv-off).b);
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float time, hazeAmp, grade; uniform vec2 res; uniform vec4 haze; varying vec2 vUv;
+    float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+    float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y); }
+    void main(){
+      // 陽炎：暖炉の上の範囲だけ、上へ流れるノイズで読み取り位置をずらす
+      vec2 uv=vUv;
+      if(hazeAmp>0.001){ vec2 hz=(vUv-haze.xy)/haze.zw; float m=smoothstep(1.,.15,length(hz))*hazeAmp;
+        if(m>0.){ vec2 q=hz*vec2(4.5,6.)-vec2(0.,time*1.7); vec2 n=vec2(vnoise(q)+.5*vnoise(q*2.3+7.),vnoise(q+31.)+.5*vnoise(q*2.3+53.))-.75; uv+=n*m*haze.w*.075; } }
+      vec2 c=vUv-.5; float r2=dot(c,c); vec2 off=c*r2*.010;
+      vec3 col=vec3(texture2D(tDiffuse,uv+off).r,texture2D(tDiffuse,uv).g,texture2D(tDiffuse,uv-off).b);
       col*=mix(1.,.42,smoothstep(.1,.62,r2));
-      col=pow(col,vec3(1.04,1.0,.98))*vec3(1.03,1.,.96);
+      // カラーグレーディング：影を青緑へ、光を橙へ、軽いS字、彩度を少し
+      float l=dot(col,vec3(.2126,.7152,.0722));
+      vec3 g=mix(col,col*col*(3.-2.*col),.16);
+      g*=mix(vec3(.86,1.0,1.14),vec3(1.08,1.0,.88),smoothstep(.03,.55,l));
+      float l2=dot(g,vec3(.2126,.7152,.0722)); g=mix(vec3(l2),g,1.1);
+      col=mix(pow(col,vec3(1.04,1.0,.98))*vec3(1.03,1.,.96),g,grade);
       float n=fract(sin(dot(floor(vUv*res)+time*61.,vec2(12.9898,78.233)))*43758.5453);
-      col+=(n-.5)*.024; gl_FragColor=vec4(col,1.); }`
+      col+=(n-.5)*.024; gl_FragColor=vec4(max(col,0.),1.); }`
 };
 // 画質ごとの設定。maxPx は描画バッファの画素数の上限、ao は GTAO の解像度の倍率（0 で無効）。
 const QUAL = {
-  low: { jp: '軽量', dpr: 1.25, maxPx: 1.6e6, msaa: 0, fxaa: false, ao: 0, aoSamples: 0, pdSamples: 0 },
-  mid: { jp: '標準', dpr: 1.5, maxPx: 2.1e6, msaa: 0, fxaa: true, ao: .5, aoSamples: 8, pdSamples: 8 },
-  high: { jp: '高', dpr: 2, maxPx: 2.4e6, msaa: 4, fxaa: false, ao: .5, aoSamples: 8, pdSamples: 8 },
+  low: { jp: '軽量', dpr: 1.25, maxPx: 1.6e6, msaa: 0, fxaa: false, ao: 0, aoSamples: 0, pdSamples: 0, lampShadow: false },
+  mid: { jp: '標準', dpr: 1.5, maxPx: 2.1e6, msaa: 0, fxaa: true, ao: .5, aoSamples: 8, pdSamples: 8, lampShadow: true },
+  high: { jp: '高', dpr: 2, maxPx: 2.4e6, msaa: 4, fxaa: false, ao: .5, aoSamples: 8, pdSamples: 8, lampShadow: true },
 };
 // 自動の解像度調整：fps が足りないとき、描く画素数を段階的に下げる（上げ戻しはしない）
 const auto = { scale: 1, acc: 0, n: 0, slow: 0, good: 0, last: 0, grace: 0, triedUp: false, locked: false };
@@ -723,7 +770,7 @@ function autoScale(now) {
   // 15秒つづけて余裕があれば、一度だけ1段戻してみる。戻して足りなければ下げ直して、そこで固定する
   else if (auto.good >= 15 && auto.scale < 1 && !auto.locked) { auto.scale = Math.min(1, auto.scale / .85); auto.triedUp = true; auto.good = 0; buildComposer(); }
 }
-let cfgOver = null, bufSize = new THREE.Vector2();
+let cfgOver = null, bufSize = new THREE.Vector2(), gradeOn = true;
 function buildComposer() {
   const Q = { ...QUAL[quality], ...(cfgOver || {}) }; auto.grace = performance.now() + 2500;
   const w = window.innerWidth, h = window.innerHeight;
@@ -749,11 +796,13 @@ function buildComposer() {
   bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), quality === 'low' ? .44 : .5, .8, 1.0);
   composer.addPass(bloom); composer.addPass(new OutputPass());
   if (Q.fxaa) { const fx = new ShaderPass(FXAAShader); fx.uniforms.resolution.value.set(1 / size.x, 1 / size.y); composer.addPass(fx); }
-  finalPass = new ShaderPass(FinalShader); finalPass.uniforms.res.value.set(size.x, size.y); composer.addPass(finalPass);
+  finalPass = new ShaderPass(FinalShader); finalPass.uniforms.res.value.set(size.x, size.y); finalPass.uniforms.grade.value = gradeOn ? 1 : 0; composer.addPass(finalPass);
   camera.aspect = w / h; camera.fov = w < h ? 80 : 66; camera.updateProjectionMatrix();
   for (const m of [fire.embers, bokehMat, snowMat, dustMat]) m.uniforms.vh.value = size.y;
   fire.light.shadow.mapSize.setScalar(quality === 'low' ? 512 : 1024);
   if (fire.light.shadow.map) { fire.light.shadow.map.dispose(); fire.light.shadow.map = null; }
+  lamp.light.castShadow = Q.lampShadow; lamp.light.shadow.mapSize.setScalar(512);
+  if (lamp.light.shadow.map) { lamp.light.shadow.map.dispose(); lamp.light.shadow.map = null; }
   renderer.shadowMap.needsUpdate = true;
 }
 
@@ -843,6 +892,7 @@ async function build() {
   interactables.push({ pos: radio.pos, r: 1.7, label: () => radio.on ? 'ラジオを止める' : 'ラジオをかける', act: () => { radio.on = !radio.on; audio.radio(radio.on); toast('RADIO : ' + (radio.on ? 'ON' : 'OFF')); } });
   for (const s of seats) interactables.push({ seat: true, pos: s.pos, r: 1.25, label: () => 'ソファに座る', act: () => sit(s) });
 
+  scene.traverse(o => { if (o.isMesh && o.material.isMeshStandardMaterial) boxify(o.material); });
   scene.traverse(o => { const m = o.material; if (o.isPoints || (o.isMesh && m && (m.transparent || m.alphaTest > 0 || m.isShaderMaterial))) { noAO.push(o); return; }
     if (o.isMesh) { o.geometry.computeBoundingBox(); const d = o.geometry.boundingBox.getSize(new THREE.Vector3()).multiply(o.scale).toArray().sort((p, q) => p - q); if (d[1] < .035) noAO.push(o); } });
   fire.cur = FIRE_T[fire.level]; applyDynamic(0); buildComposer(); captureEnv(); captureEnv();
@@ -858,7 +908,7 @@ function applyDynamic(dt) {
   const t = time, fl = .84 + .09 * Math.sin(t * 11.3) + .055 * Math.sin(t * 23.7 + 1.3) + .05 * Math.sin(t * 5.1 + .7) + .04 * Math.sin(t * 37.1), L = fire.cur;
   for (const m of fire.mats) { m.uniforms.time.value = t; m.uniforms.level.value = L; }
   fire.coals.uniforms.time.value = t; fire.coals.uniforms.level.value = L; fire.embers.uniforms.time.value = t; fire.embers.uniforms.level.value = L;
-  fire.light.intensity = (2.5 + 12 * L) * fl; fire.fill.intensity = (.5 + 2.2 * L) * fl; roomFill.intensity = (.4 + 1.0 * L + .7 * lamp.cur) * (.9 + .1 * fl);
+  fire.light.intensity = (2.5 + 12 * L) * fl; fire.fill.intensity = (.5 + 2.2 * L) * fl; roomFill.intensity = (.7 + 1.6 * L + 1.1 * lamp.cur) * (.9 + .1 * fl);
   fire.light.color.setRGB(1, .44 + .1 * L, .14 + .07 * L);
   for (const m of fire.logs) m.emissiveIntensity = (1.1 + 1.6 * L) * (.8 + .2 * Math.sin(t * 3 + m.id));
   const lv = .5 + .7 * L * fl; fire.liner.color.setRGB(lv, lv * .9, lv * .8);
@@ -870,6 +920,26 @@ function applyDynamic(dt) {
   dustMat.uniforms.warm.value = .35 + .5 * L + .25 * lc;
 }
 
+// 陽炎の範囲（暖炉の上）を画面座標に直す
+const hzA = new THREE.Vector3(), hzB = new THREE.Vector3(), hzC = new THREE.Vector3();
+function updateHaze() {
+  const u = finalPass.uniforms; camera.updateMatrixWorld();
+  hzC.set(0, .95, Z0 + .3).applyMatrix4(camera.matrixWorldInverse);
+  if (hzC.z > -.4) { u.hazeAmp.value = 0; return; }
+  hzA.set(0, .3, Z0 + .3).project(camera); hzB.set(0, 1.75, Z0 + .3).project(camera);
+  const hh = Math.abs(hzB.y - hzA.y) * .25;
+  u.haze.value.set((hzA.x + hzB.x) * .25 + .5, (hzA.y + hzB.y) * .25 + .5, hh * .62 / camera.aspect, hh);
+  u.hazeAmp.value = (.25 + .75 * fire.cur) * (hazeOn ? 1 : 0);
+}
+let hazeOn = true;
+// 窓の外：離れているときはボケた街、窓に寄るとピントが合う
+const cityLayers = []; let cityFocus = 0;
+function updateCityFocus(dt) {
+  const d = X1 - player.x, want = d < 1.2 ? 1 : d > 2.6 ? 0 : (2.6 - d) / 1.4;
+  cityFocus += (want - cityFocus) * (1 - Math.exp(-dt * 3)); const f = cityFocus * cityFocus * (3 - 2 * cityFocus);
+  for (const L of cityLayers) { L.sharp.opacity = f; L.soft.opacity = 1 - f; L.sharp.visible = f > .01; L.soft.visible = f < .99; }
+}
+
 // ---------------------------------------------------------------- loop
 let last = 0, fpsAcc = 0, fpsN = 0;
 function tick(now) {
@@ -879,6 +949,7 @@ function tick(now) {
   updatePlayer(dt); updateFocus(); applyDynamic(dt);
   if (time < envUntil) { envTimer += dt; if (envTimer > .3) { envTimer = 0; captureEnv(); } } else if (envUntil > 0) { envUntil = 0; captureEnv(); captureEnv(); }
   audio.listener(camera.position.x, camera.position.y, camera.position.z, player.yaw);
+  updateHaze(); updateCityFocus(dt);
   bokehMat.uniforms.time.value = time; snowMat.uniforms.time.value = time; dustMat.uniforms.time.value = time; finalPass.uniforms.time.value = time % 100;
   if (toastTimer > 0) { toastTimer -= dt; if (toastTimer <= 0) $('toast').classList.remove('on'); }
   renderer.info.reset(); composer.render(dt);
@@ -904,6 +975,7 @@ function toggleFs() {
   catch (e) { $('fsSub').textContent = '使えません'; }
 }
 $('fsBtn').addEventListener('click', toggleFs);
+$('gradeBtn').addEventListener('click', () => { gradeOn = !gradeOn; finalPass.uniforms.grade.value = gradeOn ? 1 : 0; $('gradeSub').textContent = gradeOn ? '入' : '切'; });
 for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => { $('fsSub').textContent = fsOn() ? '入' : '切'; });
 $('sndBtn').addEventListener('click', () => { $('sndSub').textContent = audio.toggle() ? '入' : '切'; });
 for (const k of ['bgm', 'se']) {
@@ -945,7 +1017,7 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 window.ROOM = {
   pose(x, z, yaw, pitch = 0) { player.seat = null; player.x = x; player.z = z; player.yaw = yaw; player.pitch = pitch; player.vx = player.vz = 0; player.eye = 1.62; state = 'play'; $('menu').classList.add('hide'); $('hud').classList.add('on'); },
   fire(i) { setFire(i, true); }, lamp(v) { setLamp(v, true); }, sit(i) { const s = seats[i]; player.seat = s; player.yaw = s.yaw; player.x = s.x; player.z = s.z; player.eye = 1.1; state = 'play'; $('menu').classList.add('hide'); $('hud').classList.add('on'); },
-  env() { captureEnv(); captureEnv(); }, ao(mode) { if (gtao) gtao.output = mode; return !!gtao; }, cfg(o) { cfgOver = o; autoReset(); buildComposer(); return { w: bufSize.x, h: bufSize.y, noAO: noAO.length }; },
+  env() { captureEnv(); captureEnv(); }, ao(mode) { if (gtao) gtao.output = mode; return !!gtao; }, grade(v) { gradeOn = !!v; finalPass.uniforms.grade.value = v ? 1 : 0; }, haze(v) { hazeOn = !!v; }, get box() { return BOX_OK; }, cfg(o) { cfgOver = o; autoReset(); buildComposer(); return { w: bufSize.x, h: bufSize.y, noAO: noAO.length }; },
   bench(n = 20) { const gl = renderer.getContext(), px = new Uint8Array(4); const t = performance.now(); for (let i = 0; i < n; i++) { renderer.info.reset(); composer.render(.016); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); } return +((performance.now() - t) / n).toFixed(1); }, exposure(v) { renderer.toneMappingExposure = v; }, audio, quality(q) { quality = q; autoReset(); buildComposer(); $('qualSub').textContent = QUAL[q].jp; },
   get state() { return { x: player.x, z: player.z, yaw: player.yaw, eye: player.eye, seated: !!player.seat, fire: fire.level, lamp: lamp.on, radio: radio.on, audio: audio.ready, state, prompt: $('prompt').textContent, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; },
   get dev() { return { auto, autoScale, bufSize, scene, renderer, composer, bloom, fire, lamp, winLight, roomFill, candleLight, hemi, M, THREE }; },
