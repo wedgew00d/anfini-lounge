@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>ANFINI LOUNGE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poiret+One&family=Cormorant+Garamond:wght@400;500;600&family=Shippori+Mincho:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--gold:#d9b36a;--gold2:#f1d9a0;--red:#a3202c;--ink:#f0e6d6;--dim:rgba(240,230,214,.58)}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#000;overflow:hidden;color:var(--ink);
+  font-family:"Cormorant Garamond","Shippori Mincho","Hiragino Mincho ProN","Yu Mincho",serif;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#view{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+
+/* ---- menu ---- */
+#menu{position:fixed;inset:0;display:flex;align-items:flex-start;justify-content:flex-start;
+  padding:0 clamp(24px,8vw,120px);overflow-y:auto;
+  background:linear-gradient(90deg,rgba(10,3,3,.9) 0%,rgba(10,3,3,.66) 36%,rgba(10,3,3,0) 70%);
+  transition:opacity .6s}
+#menu.hide{opacity:0;pointer-events:none}
+.panel{max-width:440px;padding:24px 0;margin:auto 0}
+.tag{font-family:"Poiret One","Shippori Mincho",serif;font-size:13px;letter-spacing:.42em;color:var(--gold);display:flex;align-items:center;gap:12px}
+.tag::before{content:"";width:9px;height:9px;border:1px solid var(--gold);transform:rotate(45deg)}
+h1{font-family:"Poiret One","Cormorant Garamond",serif;font-weight:400;font-size:clamp(34px,min(7vw,11vh),76px);line-height:1;letter-spacing:.16em;margin:18px 0 12px;color:var(--gold2)}
+h1 b{font-weight:400;color:var(--ink)}
+.rule{display:flex;align-items:center;gap:10px;width:min(300px,100%);margin-bottom:12px}
+.rule::before,.rule::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--gold),rgba(217,179,106,.15))}
+.rule::after{transform:scaleX(-1)}
+.rule i{width:7px;height:7px;background:var(--gold);transform:rotate(45deg)}
+.sub{font-family:"Shippori Mincho",serif;font-size:13px;letter-spacing:.3em;color:var(--dim)}
+.btns{display:flex;flex-direction:column;gap:10px;margin:clamp(16px,4.5vh,32px) 0 clamp(12px,3vh,24px);width:min(300px,100%)}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.btn{position:relative;text-align:left;padding:12px 18px 11px 22px;font-family:"Poiret One","Cormorant Garamond",serif;font-size:18px;letter-spacing:.3em;
+  border:1px solid rgba(217,179,106,.32);background:rgba(30,8,8,.5);
+  box-shadow:inset 0 0 0 3px rgba(10,3,3,.6),inset 0 0 0 4px rgba(217,179,106,.14);
+  transition:background .2s,border-color .2s,color .2s}
+.btn small{float:right;font-family:"Shippori Mincho",serif;font-size:11px;letter-spacing:.2em;color:var(--dim);padding-top:5px}
+.btn:hover,.btn:focus-visible{background:rgba(163,32,44,.35);border-color:var(--gold);color:var(--gold2);outline:none}
+.btn.main{border-color:rgba(217,179,106,.75);background:rgba(120,20,30,.4)}
+.vol{display:flex;align-items:center;gap:14px;padding:6px 4px 2px 22px;font-family:"Poiret One",serif;font-size:15px;letter-spacing:.3em}
+.vol span{width:46px}
+.vol output{width:46px;text-align:right;font-family:"Cormorant Garamond",serif;font-size:14px;letter-spacing:.08em;color:var(--dim)}
+.vol input{flex:1;min-width:0;height:28px;margin:0;background:none;-webkit-appearance:none;appearance:none;cursor:pointer;touch-action:pan-y}
+.vol input::-webkit-slider-runnable-track{height:2px;background:linear-gradient(90deg,var(--gold) var(--p,60%),rgba(240,230,214,.25) var(--p,60%))}
+.vol input::-moz-range-track{height:2px;background:rgba(240,230,214,.25)}
+.vol input::-moz-range-progress{height:2px;background:var(--gold)}
+.vol input::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;margin-top:-5px;background:var(--gold);border:0;border-radius:0;transform:rotate(45deg)}
+.vol input::-moz-range-thumb{width:11px;height:11px;background:var(--gold);border:0;border-radius:0;transform:rotate(45deg)}
+.vol input:focus-visible{outline:1px solid var(--gold);outline-offset:4px}
+.help{font-family:"Shippori Mincho",serif;font-size:12px;line-height:2;color:var(--dim);letter-spacing:.08em}
+.help kbd{font-family:"Cormorant Garamond",serif;font-weight:600;font-size:12px;letter-spacing:.1em;color:var(--ink);
+  border:1px solid rgba(217,179,106,.4);padding:1px 6px;margin-right:4px}
+.only-touch{display:none}
+@media (pointer:coarse){.only-touch{display:block}.only-mouse{display:none}}
+
+/* ---- hud ---- */
+#hud{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .4s}
+#hud.on{opacity:1}
+#dot{position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px;border-radius:50%;background:rgba(255,240,215,.55)}
+#prompt{position:absolute;left:50%;top:63%;transform:translateX(-50%);white-space:nowrap;
+  font-family:"Shippori Mincho",serif;font-size:13px;letter-spacing:.18em;
+  padding:8px 18px;background:rgba(14,4,4,.66);border-left:1px solid var(--gold);border-right:1px solid var(--gold);opacity:0;transition:opacity .2s}
+#prompt.on{opacity:1}
+#prompt kbd{font-family:"Cormorant Garamond",serif;font-weight:600;color:var(--gold);margin-right:10px;letter-spacing:.1em}
+#toast{position:absolute;left:50%;top:9%;transform:translateX(-50%);white-space:nowrap;
+  font-family:"Poiret One","Shippori Mincho",serif;font-size:15px;letter-spacing:.4em;color:var(--gold2);opacity:0;transition:opacity .4s}
+#toast.on{opacity:1}
+#pauseBtn{position:absolute;right:14px;top:14px;width:42px;height:42px;pointer-events:auto;
+  border:1px solid rgba(217,179,106,.4);background:rgba(14,4,4,.45);font-size:13px;letter-spacing:.1em;color:var(--gold)}
+#actBtn{position:absolute;right:26px;bottom:110px;width:76px;height:76px;border-radius:50%;pointer-events:auto;
+  border:1px solid var(--gold);background:rgba(163,32,44,.25);font-family:"Poiret One",serif;font-size:15px;letter-spacing:.2em;color:var(--gold2);display:none}
+#actBtn.on{display:block}
+#stick{position:absolute;width:112px;height:112px;margin:-56px;border-radius:50%;border:1px solid rgba(217,179,106,.4);display:none}
+#stick i{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px;border-radius:50%;background:rgba(217,179,106,.3)}
+#dbg{position:absolute;left:10px;bottom:8px;font-family:monospace;font-size:12px;color:var(--gold);white-space:pre}
+@media (max-width:640px){
+  .sub{letter-spacing:.14em;font-size:12px}
+  #menu{background:linear-gradient(180deg,rgba(10,3,3,.84),rgba(10,3,3,.5));justify-content:center}
+  #prompt{top:16%}
+}
+</style>
+<script type="importmap">
+{"imports":{"three":"./lib/three.module.min.js","three/addons/":"./lib/addons/"}}
+</script>
+</head>
+<body>
+<canvas id="view" tabindex="0"></canvas>
+
+<div id="hud">
+  <div id="dot"></div>
+  <div id="prompt"></div>
+  <div id="toast"></div>
+  <button id="pauseBtn" aria-label="メニュー">II</button>
+  <button id="actBtn">ACT</button>
+  <div id="stick"><i></i></div>
+  <div id="dbg"></div>
+</div>
+
+<div id="menu">
+  <div class="panel">
+    <div class="tag">PRIVATE SALON</div>
+    <h1>ANFINI<br><b>LOUNGE</b></h1>
+    <div class="rule"><i></i></div>
+    <div class="sub">暖炉のある談話室 ― 主観視点プロトタイプ</div>
+    <div class="btns">
+      <button class="btn main" id="startBtn">ENTER<small id="startSub">入室する</small></button>
+      <button class="btn" id="qualBtn">QUALITY<small id="qualSub">高</small></button>
+      <button class="btn" id="fsBtn">FULLSCREEN<small id="fsSub">切</small></button>
+      <button class="btn" id="sndBtn">SOUND<small id="sndSub">入</small></button>
+      <label class="vol"><span>BGM</span><input type="range" id="bgmVol" min="0" max="100" step="5" aria-label="BGMの音量"><output id="bgmVal"></output></label>
+      <label class="vol"><span>SE</span><input type="range" id="seVol" min="0" max="100" step="5" aria-label="効果音の音量"><output id="seVal"></output></label>
+    </div>
+    <div class="help only-mouse">
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>移動　<kbd>SHIFT</kbd>早歩き</div>
+      <div><kbd>MOUSE</kbd>視点　<kbd>E</kbd>操作　<kbd>ESC</kbd>メニュー　<kbd>F3</kbd>fps表示</div>
+      <div>音が出ます（ENTER で開始）</div>
+    </div>
+    <div class="help only-touch">
+      <div>画面の左半分をドラッグ：移動</div>
+      <div>画面の右半分をドラッグ：視点　／　ACT：操作</div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./js/game.js"></script>
+</body>
+</html>
