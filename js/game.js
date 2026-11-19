@@ -274,7 +274,7 @@ const M = {
   flame: Basic({ color: new THREE.Color(3.2, 1.9, .7) }),
   shade: Basic({ color: 0xffffff, side: THREE.DoubleSide }),
   dial: Basic({ color: 0xffffff }),
-  glass: Basic({ color: 0x000000, reflectivity: .22, combine: THREE.AddOperation, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
+  glass: Basic({ color: 0x000000, reflectivity: .16, combine: THREE.AddOperation, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
   crystal: Std({ color: 0xe4ecf4, roughness: .05, metalness: .92, transparent: true, opacity: .36, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: .9 }),
 };
 texFloor.map.rotation = texFloor.orm.rotation = Math.PI / 4;
@@ -404,7 +404,7 @@ function buildFireplace() {
     fragmentShader: `varying vec2 vUv; uniform float time, level; float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
       float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y); }
       void main(){ vec2 p=vUv*vec2(22.,9.); float c=noise(p)*.6+noise(p*2.3+4.)*.4; float pulse=.6+.4*noise(p*.5+vec2(time*.9,time*.6));
-        float m=smoothstep(.42,.75,c)*pulse; float edge=smoothstep(.0,.25,vUv.x)*smoothstep(1.,.75,vUv.x)*smoothstep(.0,.3,vUv.y)*smoothstep(1.,.7,vUv.y);
+        float m=smoothstep(.42,.75,c)*pulse; float edge=smoothstep(.0,.25,vUv.x)*(1.-smoothstep(.75,1.,vUv.x))*smoothstep(.0,.3,vUv.y)*(1.-smoothstep(.7,1.,vUv.y));
         gl_FragColor=vec4(mix(vec3(.5,.04,0.),vec3(1.,.5,.1),m)*m*edge*(1.2+level*1.6)+vec3(.02,.008,.004),1.); }` });
   mesh(new THREE.PlaneGeometry(.9, .42).rotateX(-Math.PI / 2), fire.coals, g, 0, .146, .12);
   // 炎（向きを変えた板を重ねる）
@@ -422,7 +422,7 @@ function buildFireplace() {
       void main(){ float f=fract(sd*17.3+time*(.25+sd*.45)); vec3 p=position; p.y+=f*f*.2+f*(.45+.5*fract(sd*5.7))*level; p.x+=sin(time*2.1+sd*40.+f*6.)*.05*f; p.z+=cos(time*1.7+sd*23.)*.03*f;
         vec4 mv=modelViewMatrix*vec4(p,1.); gl_Position=projectionMatrix*mv; float px=.007*projectionMatrix[1][1]*vh*.5/max(-mv.z,.05); float k=min(px/1.2,1.); gl_PointSize=max(px,1.2);
         vA=(1.-f)*k*k*step(fract(sd*3.1),level*.9)*(.5+.5*sin(time*9.+sd*50.)); }`,
-    fragmentShader: `varying float vA; void main(){ float d=length(gl_PointCoord-.5); gl_FragColor=vec4(vec3(1.,.5,.14)*3.2*vA*smoothstep(.5,.1,d),1.); }` });
+    fragmentShader: `varying float vA; void main(){ float d=length(gl_PointCoord-.5); gl_FragColor=vec4(vec3(1.,.5,.14)*3.2*vA*(1.-smoothstep(.1,.5,d)),1.); }` });
   const em = new THREE.Points(eg, fire.embers); em.frustumCulled = false; g.add(em);
   // 光
   fire.light = new THREE.PointLight(0xff7a2e, 10, 16, 1.15); fire.light.position.set(0, .52, .28);
@@ -545,7 +545,7 @@ function buildLamp() {
 
 // ---------------------------------------------------------------- window (east) + exterior
 const WX0 = -2.6, WX1 = 2.7;     // 東壁ローカル（= ワールド z − ZC）
-let bokehMat, snowMat;
+let bokehMat, snowMat, windowGlass = null;
 function curtainGeo(width, height, pleats, tie) {
   const g = new THREE.PlaneGeometry(width, height, 72, 40), p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
@@ -565,7 +565,7 @@ function buildWindowWall() {
   for (let k = 0; k <= 4; k++) box(g, .07, head - sill, .1, WX0 + ww * k / 4, (sill + head) / 2, -.03, M.bronze);
   box(g, ww, .06, .1, wc, 2.42, -.03, M.bronze); box(g, ww, .06, .1, wc, head - .03, -.03, M.bronze);
   for (let k = 0; k < 4; k++) box(g, .012, 2.42 - sill, .012, WX0 + ww * (k + .5) / 4, (sill + 2.42) / 2, -.03, M.gold, false);
-  const gl = new THREE.Mesh(new THREE.PlaneGeometry(ww, head - sill), M.glass); gl.position.set(wc, (sill + head) / 2, -.06); g.add(gl);
+  const gl = new THREE.Mesh(new THREE.PlaneGeometry(ww, head - sill), M.glass); gl.position.set(wc, (sill + head) / 2, -.06); g.add(gl); windowGlass = gl;
   trims(g, WX0, WX1);
   // カーテン
   const rod = cyl(g, .018, .018, ww + 1.7, wc, 3.02, .2, M.gold, 12); rod.rotation.z = Math.PI / 2;
@@ -614,7 +614,7 @@ function buildWindowWall() {
       vertexShader: `attribute vec3 color; attribute float sd; uniform float time, vh; varying vec3 vC;
         void main(){ vec4 mv=modelViewMatrix*vec4(position,1.); gl_Position=projectionMatrix*mv; float px=(.7+sd*1.3)*projectionMatrix[1][1]*vh*.5/max(-mv.z,1.); gl_PointSize=clamp(px,3.,64.);
           vC=color*(.2+.16*sin(time*(.4+sd)+sd*40.))*(.5+sd); }`,
-      fragmentShader: `varying vec3 vC; void main(){ float d=length(gl_PointCoord-.5)*2.; float a=smoothstep(1.,.86,d)*(.55+.45*smoothstep(.55,.95,d)); gl_FragColor=vec4(vC*a,1.); }` });
+      fragmentShader: `varying vec3 vC; void main(){ float d=length(gl_PointCoord-.5)*2.; float a=(1.-smoothstep(.86,1.,d))*(.55+.45*smoothstep(.55,.95,d)); gl_FragColor=vec4(vC*a,1.); }` });
     const pts = new THREE.Points(bg, bokehMat); pts.frustumCulled = false; scene.add(pts); }
   // 雪
   { const n = 1100, p = new Float32Array(n * 3), sd = new Float32Array(n); for (let i = 0; i < n; i++) { p.set([X1 + rr(.6, 16), rr(0, 12), ZC + rr(-12, 12)], i * 3); sd[i] = rnd(); }
@@ -623,7 +623,7 @@ function buildWindowWall() {
       vertexShader: `attribute float sd; uniform float time, vh; varying float vA;
         void main(){ vec3 p=position; p.y=mod(p.y-time*(.35+sd*.45),12.)-4.; p.z+=sin(time*.5+sd*30.+p.y)*.3; p.x+=cos(time*.37+sd*17.)*.2;
           vec4 mv=modelViewMatrix*vec4(p,1.); gl_Position=projectionMatrix*mv; float px=(.018+sd*.02)*projectionMatrix[1][1]*vh*.5/max(-mv.z,.2); float k=min(px/1.3,1.); gl_PointSize=max(px,1.3); vA=k*k*(.3+.5*sd); }`,
-      fragmentShader: `varying float vA; void main(){ float d=length(gl_PointCoord-.5); gl_FragColor=vec4(vec3(.8,.88,1.)*vA*smoothstep(.5,.1,d),1.); }` });
+      fragmentShader: `varying float vA; void main(){ float d=length(gl_PointCoord-.5); gl_FragColor=vec4(vec3(.8,.88,1.)*vA*(1.-smoothstep(.1,.5,d)),1.); }` });
     const pts = new THREE.Points(sg, snowMat); pts.frustumCulled = false; scene.add(pts); snowMat.userData.pts = pts; }
 }
 
@@ -679,7 +679,7 @@ function buildDust() {
       void main(){ vec3 p=position; p.x+=sin(time*.11+sd*40.)*.35; p.y+=sin(time*.07+sd*23.)*.22+time*.004*(sd-.3); p.z+=cos(time*.09+sd*31.)*.35; p.y=mod(p.y,3.1);
         vec4 mv=modelViewMatrix*vec4(p,1.); gl_Position=projectionMatrix*mv; float px=(.006+sd*.008)*projectionMatrix[1][1]*vh*.5/max(-mv.z,.12); float k=min(px/1.3,1.); gl_PointSize=clamp(px,1.3,14.);
         float tw=pow(.5+.5*sin(time*(.6+sd*1.6)+sd*90.),3.); vA=k*k*(.12+.75*tw)*warm*smoothstep(.12,.5,-mv.z); }`,
-    fragmentShader: `varying float vA; void main(){ float d=length(gl_PointCoord-.5); gl_FragColor=vec4(vec3(1.,.74,.36)*vA*smoothstep(.5,.05,d),1.); }` });
+    fragmentShader: `varying float vA; void main(){ float d=length(gl_PointCoord-.5); gl_FragColor=vec4(vec3(1.,.74,.36)*vA*(1.-smoothstep(.05,.5,d)),1.); }` });
   const pts = new THREE.Points(g, dustMat); pts.frustumCulled = false; scene.add(pts); dustMat.userData.pts = pts;
 }
 
@@ -695,13 +695,14 @@ function buildLights() {
 const cubeRT = new THREE.WebGLCubeRenderTarget(COARSE ? 128 : 256, { type: THREE.HalfFloatType });
 const cubeCam = new THREE.CubeCamera(.1, 600, cubeRT); cubeCam.position.set(0, 1.45, .7);
 const pmrem = new THREE.PMREMGenerator(renderer);
-let envRT = null, envUntil = 0, envTimer = 0;
+let envRT = null, envUntil = 0, envTimer = 0, glassMesh = null;
 function captureEnv() {
+  // ガラスは、撮ったままのキューブマップを映りこみに使う。自分が書きこむ先を自分で読まないよう、撮る間は隠す
+  if (glassMesh) glassMesh.visible = false;
   dustMat.userData.pts.visible = false; snowMat.userData.pts.visible = false;
   const exp = renderer.toneMappingExposure; cubeCam.update(renderer, scene); renderer.toneMappingExposure = exp;
-  dustMat.userData.pts.visible = true; snowMat.userData.pts.visible = true;
+  dustMat.userData.pts.visible = true; snowMat.userData.pts.visible = true; if (glassMesh) glassMesh.visible = true;
   const rt = pmrem.fromCubemap(cubeRT.texture); scene.environment = rt.texture;
-  for (const m of [M.glass]) { if (!m.envMap) m.needsUpdate = true; m.envMap = rt.texture; }
   if (envRT) envRT.dispose(); envRT = rt;
 }
 
@@ -715,13 +716,29 @@ const BOX_GLSL = `vec3 boxProject( vec3 dir, vec3 wp ) {
   return normalize( wp + dir * t - probe );
 }
 `;
+// 不正な値（NaN / Inf）のガード。min / max に NaN を渡したときの結果は実装によって違う（引数の順で変わる）ので、
+// 比較で選ぶ形にする：NaN はどの比較も偽になるので 0 に落ち、+Inf は上限に収まる。
+const GUARD = (v, cap = '48.0') => `${v} = vec3( ${['r', 'g', 'b'].map(c => `${v}.${c} >= 0.0 ? min( ${v}.${c}, ${cap} ) : 0.0`).join(', ')} );`;
 const BOX_CHUNK = THREE.ShaderChunk.envmap_physical_pars_fragment.replace('reflectVec = inverseTransformDirection( reflectVec, viewMatrix );', 'reflectVec = inverseTransformDirection( reflectVec, viewMatrix ); reflectVec = boxProject( reflectVec, vBoxWP );');
 const BOX_OK = BOX_CHUNK !== THREE.ShaderChunk.envmap_physical_pars_fragment;
+// 基本マテリアル（窓ガラス）：反射を画素ごとに計算し、同じ箱で引き直す。
+// 基本マテリアルは PMREM の環境マップを読めないので、撮ったままのキューブマップを持たせる
+const BOXB_CHUNK = THREE.ShaderChunk.envmap_fragment.replace('vec3 reflectVec = vReflect;', 'vec3 reflectVec = boxProject( reflect( normalize( vBoxWP - cameraPosition ), normalize( vBoxN ) ), vBoxWP );');
+const BOXB_OK = BOXB_CHUNK !== THREE.ShaderChunk.envmap_fragment;
+function boxifyBasic(mat) {
+  if (!BOXB_OK || mat.userData.box) return; mat.userData.box = true;
+  mat.onBeforeCompile = sh => {
+    sh.vertexShader = 'varying vec3 vBoxWP; varying vec3 vBoxN;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n\tvBoxWP = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz; vBoxN = mat3( modelMatrix ) * objectNormal;');
+    sh.fragmentShader = 'varying vec3 vBoxWP; varying vec3 vBoxN;\n' + BOX_GLSL + sh.fragmentShader.replace('#include <envmap_fragment>', BOXB_CHUNK);
+  };
+  mat.customProgramCacheKey = () => 'boxb';
+}
 function boxify(mat) {
   if (!BOX_OK || mat.userData.box) return; mat.userData.box = true;
   mat.onBeforeCompile = sh => {
     sh.vertexShader = 'varying vec3 vBoxWP;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n\tvBoxWP = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;');
     sh.fragmentShader = 'varying vec3 vBoxWP;\n' + BOX_GLSL + sh.fragmentShader.replace('#include <envmap_physical_pars_fragment>', BOX_CHUNK);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <dithering_fragment>', '#include <dithering_fragment>\n\t' + GUARD('gl_FragColor.rgb'));
   };
   mat.customProgramCacheKey = () => 'box';
 }
@@ -729,15 +746,16 @@ function boxify(mat) {
 // ---------------------------------------------------------------- post
 let composer, bloom, finalPass, gtao = null, noAO = [], quality = COARSE ? 'low' : 'mid';
 const FinalShader = {
-  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, res: { value: new THREE.Vector2(1, 1) }, haze: { value: new THREE.Vector4(.5, .5, .1, .1) }, hazeAmp: { value: 0 }, grade: { value: 1 } },
+  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, res: { value: new THREE.Vector2(1, 1) }, haze: { value: new THREE.Vector4(.5, .5, .1, .1) }, hazeAmp: { value: 0 }, grade: { value: 1 }, grain: { value: .024 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float time, hazeAmp, grade; uniform vec2 res; uniform vec4 haze; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float time, hazeAmp, grade, grain; uniform vec2 res; uniform vec4 haze; varying vec2 vUv;
     float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+    float hash12(vec2 p){ vec3 p3=fract(vec3(p.xyx)*.1031); p3+=dot(p3,p3.yzx+33.33); return fract((p3.x+p3.y)*p3.z); }
     float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y); }
     void main(){
       // 陽炎：暖炉の上の範囲だけ、上へ流れるノイズで読み取り位置をずらす
       vec2 uv=vUv;
-      if(hazeAmp>0.001){ vec2 hz=(vUv-haze.xy)/haze.zw; float m=smoothstep(1.,.15,length(hz))*hazeAmp;
+      if(hazeAmp>0.001){ vec2 hz=(vUv-haze.xy)/max(haze.zw,vec2(1e-4)); float m=(1.-smoothstep(.15,1.,length(hz)))*hazeAmp;
         if(m>0.){ vec2 q=hz*vec2(4.5,6.)-vec2(0.,time*1.7); vec2 n=vec2(vnoise(q)+.5*vnoise(q*2.3+7.),vnoise(q+31.)+.5*vnoise(q*2.3+53.))-.75; uv+=n*m*haze.w*.075; } }
       vec2 c=vUv-.5; float r2=dot(c,c); vec2 off=c*r2*.010;
       vec3 col=vec3(texture2D(tDiffuse,uv+off).r,texture2D(tDiffuse,uv).g,texture2D(tDiffuse,uv-off).b);
@@ -748,14 +766,16 @@ const FinalShader = {
       g*=mix(vec3(.86,1.0,1.14),vec3(1.08,1.0,.88),smoothstep(.03,.55,l));
       float l2=dot(g,vec3(.2126,.7152,.0722)); g=mix(vec3(l2),g,1.1);
       col=mix(pow(col,vec3(1.04,1.0,.98))*vec3(1.03,1.,.96),g,grade);
-      float n=fract(sin(dot(floor(vUv*res)+time*61.,vec2(12.9898,78.233)))*43758.5453);
-      col+=(n-.5)*.024; gl_FragColor=vec4(max(col,0.),1.); }`
+      float n=hash12(floor(vUv*res)+floor(time*61.)*vec2(17.,29.));
+      col+=(n-.5)*grain;
+      // 不正な値（NaN / Inf）が残っていても、ここで 0〜1 に収める
+      ${GUARD('col', '1.0')} gl_FragColor=vec4(col,1.); }`
 };
 // 画質ごとの設定。maxPx は描画バッファの画素数の上限、ao は GTAO の解像度の倍率（0 で無効）。
 const QUAL = {
-  low: { jp: '軽量', dpr: 1.25, maxPx: 1.6e6, msaa: 0, fxaa: false, ao: 0, aoSamples: 0, pdSamples: 0, lampShadow: false },
-  mid: { jp: '標準', dpr: 1.5, maxPx: 2.1e6, msaa: 0, fxaa: true, ao: .5, aoSamples: 8, pdSamples: 8, lampShadow: true },
-  high: { jp: '高', dpr: 2, maxPx: 2.4e6, msaa: 4, fxaa: false, ao: .5, aoSamples: 8, pdSamples: 8, lampShadow: true },
+  low: { jp: '軽量', aoEmis: [1.2, 2.4], dpr: 1.25, maxPx: 1.6e6, msaa: 0, fxaa: false, ao: 0, aoSamples: 0, pdSamples: 0, lampShadow: false },
+  mid: { jp: '標準', aoEmis: [1.2, 2.4], dpr: 1.5, maxPx: 2.1e6, msaa: 0, fxaa: true, ao: .5, aoSamples: 8, pdSamples: 8, lampShadow: true },
+  high: { jp: '高', aoEmis: [1.2, 2.4], dpr: 2, maxPx: 2.4e6, msaa: 4, fxaa: false, ao: .5, aoSamples: 8, pdSamples: 8, lampShadow: true },
 };
 // 自動の解像度調整：fps が足りないとき、描く画素数を段階的に下げる（上げ戻しはしない）
 const auto = { scale: 1, acc: 0, n: 0, slow: 0, good: 0, last: 0, grace: 0, triedUp: false, locked: false };
@@ -770,7 +790,7 @@ function autoScale(now) {
   // 15秒つづけて余裕があれば、一度だけ1段戻してみる。戻して足りなければ下げ直して、そこで固定する
   else if (auto.good >= 15 && auto.scale < 1 && !auto.locked) { auto.scale = Math.min(1, auto.scale / .85); auto.triedUp = true; auto.good = 0; buildComposer(); }
 }
-let cfgOver = null, bufSize = new THREE.Vector2(), gradeOn = true;
+let cfgOver = null, bufSize = new THREE.Vector2(), gradeOn = true, bloomGuard = false, frozen = null;
 function buildComposer() {
   const Q = { ...QUAL[quality], ...(cfgOver || {}) }; auto.grace = performance.now() + 2500;
   const w = window.innerWidth, h = window.innerHeight;
@@ -787,13 +807,26 @@ function buildComposer() {
     const aw = Math.max(2, Math.round(size.x * Q.ao)), ah = Math.max(2, Math.round(size.y * Q.ao));
     gtao = new GTAOPass(scene, camera, aw, ah, undefined, { radius: .5, distanceExponent: 1.2, thickness: 1.2, scale: 1.7, samples: Q.aoSamples, distanceFallOff: 1, screenSpaceRadius: false }, { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 5, rings: 2, samples: Q.pdSamples });
     gtao.blendIntensity = 1;
+    // 合成を差し替える：発光している面（炎、ランプの笠、蝋燭、窓の外の灯）は暗くしない。
+    // 標準の合成は画面全体に掛け算で乗るので、発光面まで陰になり、ブルームごと暗くなる。
+    if (Q.aoBlend !== 'std') {
+      gtao.blendMaterial.dispose();
+      gtao.blendMaterial = new THREE.ShaderMaterial({
+        uniforms: { tDiffuse: { value: null }, tColor: { value: null }, intensity: { value: 1 }, lim: { value: new THREE.Vector2(Q.aoEmis[0], Q.aoEmis[1]) } }, depthTest: false, depthWrite: false,
+        vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+        fragmentShader: `uniform sampler2D tDiffuse, tColor; uniform float intensity; uniform vec2 lim; varying vec2 vUv;
+          void main(){ vec4 c=texture2D(tColor,vUv); ${GUARD('c.rgb')} float ao=texture2D(tDiffuse,vUv).r; float m=max(c.r,max(c.g,c.b));
+            gl_FragColor=vec4(c.rgb*mix(1.,ao,intensity*(1.-smoothstep(lim.x,lim.y,m))),c.a); }` });
+    }
     const run = gtao.render.bind(gtao), setSize = gtao.setSize.bind(gtao);
     gtao.setSize = () => setSize(aw, ah);     // 合成器が全解像度に戻さないようにする
-    gtao.render = (...a) => { for (const o of noAO) o.visible = false; run(...a); for (const o of noAO) o.visible = true; };
+    gtao.render = (...a) => { const u = gtao.blendMaterial.uniforms; if (u.tColor) u.tColor.value = a[2].texture; for (const o of noAO) { o.userData.v = o.visible; o.visible = false; } run(...a); for (const o of noAO) o.visible = o.userData.v; };
     composer.addPass(gtao);
   }
   for (const m of shMats) m.opacity = m.userData.op * (gtao ? .6 : 1);
   bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), quality === 'low' ? .44 : .5, .8, 1.0);
+  bloomGuard = false;
+  if (Q.guard !== false) { const hp = bloom.materialHighPassFilter, a = 'vec4 texel = texture2D( tDiffuse, vUv );'; if (hp.fragmentShader.includes(a)) { hp.fragmentShader = hp.fragmentShader.replace(a, a + ' ' + GUARD('texel.rgb')); hp.needsUpdate = true; bloomGuard = true; } }
   composer.addPass(bloom); composer.addPass(new OutputPass());
   if (Q.fxaa) { const fx = new ShaderPass(FXAAShader); fx.uniforms.resolution.value.set(1 / size.x, 1 / size.y); composer.addPass(fx); }
   finalPass = new ShaderPass(FinalShader); finalPass.uniforms.res.value.set(size.x, size.y); finalPass.uniforms.grade.value = gradeOn ? 1 : 0; composer.addPass(finalPass);
@@ -893,6 +926,7 @@ async function build() {
   for (const s of seats) interactables.push({ seat: true, pos: s.pos, r: 1.25, label: () => 'ソファに座る', act: () => sit(s) });
 
   scene.traverse(o => { if (o.isMesh && o.material.isMeshStandardMaterial) boxify(o.material); });
+  glassMesh = windowGlass; M.glass.envMap = cubeRT.texture; boxifyBasic(M.glass);
   scene.traverse(o => { const m = o.material; if (o.isPoints || (o.isMesh && m && (m.transparent || m.alphaTest > 0 || m.isShaderMaterial))) { noAO.push(o); return; }
     if (o.isMesh) { o.geometry.computeBoundingBox(); const d = o.geometry.boundingBox.getSize(new THREE.Vector3()).multiply(o.scale).toArray().sort((p, q) => p - q); if (d[1] < .035) noAO.push(o); } });
   fire.cur = FIRE_T[fire.level]; applyDynamic(0); buildComposer(); captureEnv(); captureEnv();
@@ -920,6 +954,9 @@ function applyDynamic(dt) {
   dustMat.uniforms.warm.value = .35 + .5 * L + .25 * lc;
 }
 
+// 確認用：画面の1点に不正な値（NaN）を出す小さな板。ブルームで黒い四角に広がらないことを確かめる
+const poisonMesh = new THREE.Mesh(new THREE.PlaneGeometry(.02, .02), new THREE.ShaderMaterial({ uniforms: { z: { value: 0 } }, vertexShader: `void main(){ gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`, fragmentShader: `uniform float z; void main(){ gl_FragColor=vec4(vec3(z/z),1.); }`, side: THREE.DoubleSide, depthTest: false }));
+poisonMesh.visible = false; poisonMesh.renderOrder = 9; scene.add(poisonMesh);
 // 陽炎の範囲（暖炉の上）を画面座標に直す
 const hzA = new THREE.Vector3(), hzB = new THREE.Vector3(), hzC = new THREE.Vector3();
 function updateHaze() {
@@ -944,7 +981,7 @@ function updateCityFocus(dt) {
 let last = 0, fpsAcc = 0, fpsN = 0;
 function tick(now) {
   requestAnimationFrame(tick);
-  const raw = (now - last) / 1000, dt = Math.min(raw, .05); last = now; time += dt; if (!document.hidden && !cfgOver) autoScale(now);
+  const raw = (now - last) / 1000, dt = Math.min(raw, .05); last = now; time = frozen === null ? time + dt : frozen; if (!document.hidden && !cfgOver) autoScale(now);
   if (state === 'menu' && !player.seat) { player.yaw = Math.sin(time * .14) * .3; player.pitch = -.07 + Math.sin(time * .1) * .025; }
   updatePlayer(dt); updateFocus(); applyDynamic(dt);
   if (time < envUntil) { envTimer += dt; if (envTimer > .3) { envTimer = 0; captureEnv(); } } else if (envUntil > 0) { envUntil = 0; captureEnv(); captureEnv(); }
@@ -1017,7 +1054,11 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 window.ROOM = {
   pose(x, z, yaw, pitch = 0) { player.seat = null; player.x = x; player.z = z; player.yaw = yaw; player.pitch = pitch; player.vx = player.vz = 0; player.eye = 1.62; state = 'play'; $('menu').classList.add('hide'); $('hud').classList.add('on'); },
   fire(i) { setFire(i, true); }, lamp(v) { setLamp(v, true); }, sit(i) { const s = seats[i]; player.seat = s; player.yaw = s.yaw; player.x = s.x; player.z = s.z; player.eye = 1.1; state = 'play'; $('menu').classList.add('hide'); $('hud').classList.add('on'); },
-  env() { captureEnv(); captureEnv(); }, ao(mode) { if (gtao) gtao.output = mode; return !!gtao; }, grade(v) { gradeOn = !!v; finalPass.uniforms.grade.value = v ? 1 : 0; }, haze(v) { hazeOn = !!v; }, get box() { return BOX_OK; }, cfg(o) { cfgOver = o; autoReset(); buildComposer(); return { w: bufSize.x, h: bufSize.y, noAO: noAO.length }; },
+  env() { captureEnv(); captureEnv(); }, ao(mode) { if (gtao) gtao.output = mode; return !!gtao; }, grade(v) { gradeOn = !!v; finalPass.uniforms.grade.value = v ? 1 : 0; }, grain(v) { finalPass.uniforms.grain.value = v; }, freeze(t) { frozen = t; },
+  // 確認用：視点の正面 1.2m に NaN の点を置く
+  poison(on) { poisonMesh.visible = !!on; if (on) { camera.updateMatrixWorld(); poisonMesh.position.set(0, 0, -1.2).applyMatrix4(camera.matrixWorld); poisonMesh.quaternion.copy(camera.quaternion); } },
+  get guard() { return [BOX_OK, bloomGuard, BOXB_OK]; },
+  bump(k) { scene.traverse(o => { const m = o.material; if (m && m.bumpMap) { if (m.userData.bs === undefined) m.userData.bs = m.bumpScale; m.bumpScale = m.userData.bs * k; } }); }, haze(v) { hazeOn = !!v; }, get box() { return BOX_OK; }, cfg(o) { cfgOver = o; autoReset(); buildComposer(); return { w: bufSize.x, h: bufSize.y, noAO: noAO.length }; },
   bench(n = 20) { const gl = renderer.getContext(), px = new Uint8Array(4); const t = performance.now(); for (let i = 0; i < n; i++) { renderer.info.reset(); composer.render(.016); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); } return +((performance.now() - t) / n).toFixed(1); }, exposure(v) { renderer.toneMappingExposure = v; }, audio, quality(q) { quality = q; autoReset(); buildComposer(); $('qualSub').textContent = QUAL[q].jp; },
   get state() { return { x: player.x, z: player.z, yaw: player.yaw, eye: player.eye, seated: !!player.seat, fire: fire.level, lamp: lamp.on, radio: radio.on, audio: audio.ready, state, prompt: $('prompt').textContent, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; },
   get dev() { return { auto, autoScale, bufSize, scene, renderer, composer, bloom, fire, lamp, winLight, roomFill, candleLight, hemi, M, THREE }; },

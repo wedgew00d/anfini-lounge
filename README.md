@@ -54,5 +54,8 @@ lib/              three.js r170 と、後処理・AO・FXAA のモジュール�
   - `ROOM.fire(0〜2)`、`ROOM.lamp(true/false)`、`ROOM.sit(0/1)`、`ROOM.quality('low'|'mid'|'high')`
   - `ROOM.ao(4)`：AO だけを表示（`ROOM.ao(0)` で戻す）
   - `ROOM.grade(0/1)`：グレーディングの入切、`ROOM.haze(0/1)`：陽炎の入切
+  - `ROOM.poison(1)`：視点の正面 1.2m に不正な値（NaN）の点を置く（黒い四角に広がらないことの確認。`ROOM.poison(0)` で消す）
+  - `ROOM.freeze(t)`：時間を止める（前後の明るさを比べるとき用。`ROOM.freeze(null)` で戻す）
+  - `ROOM.grain(v)`：粒状感の強さ、`ROOM.bump(k)`：凹凸テクスチャの強さの倍率
   - `ROOM.cfg({...})`：画質の設定を上書き、`ROOM.bench(n)`：n フレームを続けて描いた1フレームあたりの時間（ms）
   - `ROOM.state`：現在の状態
